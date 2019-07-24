@@ -2,11 +2,13 @@
 
 'use strict';
 
-var fs = require('fs');
+var rw = require('rw');
 var path = require('path');
 var globby = require('globby');
 var Linter = require('../lib/index');
 const chalk = require('chalk');
+
+const STDIN = '/dev/stdin';
 
 function printErrors(errors) {
   const quiet = process.argv.indexOf('--quiet') !== -1;
@@ -58,35 +60,58 @@ function printErrors(errors) {
 }
 
 function lintFile(linter, filePath, moduleId) {
-  var source = fs.readFileSync(filePath, { encoding: 'utf8' });
+  var source;
+  try {
+    source = rw.readFileSync(filePath, { encoding: 'utf8' });
+  } catch (error) {
+    if (error.code === 'ENXIO') {
+      return [];
+    } else {
+      throw error;
+    }
+  }
   return linter.verify({ source: source, moduleId: moduleId });
+}
+
+function expandFileGlobs(fileArgs) {
+  return fileArgs.reduce((filePaths, fileArg) => {
+    var files;
+    if (['-', STDIN].includes(fileArg)) {
+      if (filePaths.includes(STDIN)) {
+        return filePaths;
+      }
+      files = [STDIN];
+    } else {
+      files = globby
+        .sync(fileArg, {
+          ignore: ['**/dist/**', '**/tmp/**', '**/node_modules/**'],
+          gitignore: true,
+        })
+        .filter(filePath => filePath.slice(-4) === '.hbs');
+    }
+    return filePaths.concat(files);
+  }, []);
 }
 
 function getRelativeFilePaths() {
   var fileArgs = process.argv.slice(2).filter(arg => arg.slice(0, 2) !== '--');
-
-  var relativeFilePaths = fileArgs
-    .reduce((filePaths, fileArg) => {
-      return filePaths.concat(
-        globby.sync(fileArg, {
-          ignore: ['**/dist/**', '**/tmp/**', '**/node_modules/**'],
-          gitignore: true,
-        })
-      );
-    }, [])
-    .filter(filePath => filePath.slice(-4) === '.hbs');
+  var relativeFilePaths = fileArgs.length === 0 ? [STDIN] : expandFileGlobs(fileArgs);
 
   return Array.from(new Set(relativeFilePaths));
 }
 
-function checkConfigPath() {
-  var configPathIndex = process.argv.indexOf('--config-path');
-  var configPath = null;
-  if (configPathIndex > -1) {
-    configPath = process.argv[configPathIndex + 1];
+function getArgumentValue(flag) {
+  var flagIndex = process.argv.indexOf(flag);
+  var flagValue = null;
+  if (flagIndex > -1) {
+    flagValue = process.argv[flagIndex + 1];
   }
 
-  return configPath;
+  return flagValue;
+}
+
+function checkConfigPath() {
+  return getArgumentValue('--config-path');
 }
 
 function run() {
