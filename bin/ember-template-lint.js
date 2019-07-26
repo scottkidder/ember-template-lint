@@ -114,6 +114,10 @@ function checkConfigPath() {
   return getArgumentValue('--config-path');
 }
 
+function filePathFromArgs() {
+  return getArgumentValue('--filename') || '';
+}
+
 function run() {
   var configPath = checkConfigPath();
   var linter;
@@ -127,7 +131,8 @@ function run() {
 
   var errors = getRelativeFilePaths().reduce((errors, relativeFilePath) => {
     var filePath = path.resolve(relativeFilePath);
-    var fileErrors = lintFile(linter, filePath, relativeFilePath.slice(0, -4));
+    var fileName = relativeFilePath === STDIN ? filePathFromArgs() : relativeFilePath;
+    var fileErrors = lintFile(linter, filePath, fileName.slice(0, -4));
 
     if (
       fileErrors.some(function(err) {
